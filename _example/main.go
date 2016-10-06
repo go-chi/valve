@@ -20,7 +20,9 @@ func main() {
 
 	r := chi.NewRouter()
 
-	r.Use(valv.Handler) // we can remove this with the base context stuff..
+	r.Use(valv.Handler) // TODO: we can remove this with the base context stuff..
+	// something like..chi.WithBaseContext(http.Handler, context.Context) http.handler
+
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 
@@ -29,17 +31,6 @@ func main() {
 	})
 
 	r.Get("/slow", func(w http.ResponseWriter, r *http.Request) {
-
-		// hmm.. if <-shutdown.ShutdownCh is closed.. then, we shouldn't allow anymore processing.
-		// tylerb/graceful will already release the port though and let requests finish.
-		// this is more important for background workers etc. streaming, etc. to tell them
-		// to finish up.
-		// perhaps shutdown should have ForceShutdown() which calls the cancel on the base context..
-		//
-		// --
-		//
-		// so, we sorta need a base context
-		// chi.WithBaseContext(http.Handler, context.Context) http.handler
 
 		valve.Context(r.Context()).Open()
 		defer valve.Context(r.Context()).Close()
@@ -70,9 +61,6 @@ func main() {
 			<-time.After(1 * time.Second)
 
 			func() {
-				// shutdown.Context(ctx).Add(1)
-				// defer shutdown.Context(ctx).Done()
-
 				valve.Context(ctx).Open()
 				defer valve.Context(ctx).Close()
 
