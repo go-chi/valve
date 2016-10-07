@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	ValveCtxKey = &contextKey{"ValveContext"}
-	ErrTimedout = errors.New("valve: shutdown timed out")
+	ValveCtxKey     = &contextKey{"ValveContext"}
+	ErrTimedout     = errors.New("valve: shutdown timed out")
+	ErrShuttingdown = errors.New("valve: shutdown in progress")
 )
 
 // contextKey is a value for use with context.WithValue. It's used as
@@ -33,9 +34,9 @@ type Valve struct {
 
 type Lever interface {
 	Stop() <-chan struct{}
-	Add(delta int)
+	Add(delta int) error
 	Done()
-	Open()
+	Open() error
 	Close()
 }
 
@@ -50,6 +51,24 @@ func (v *Valve) Handler(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), ValveCtxKey, Lever(v))
 		r = r.WithContext(ctx)
 		next.ServeHTTP(w, r)
+	}
+	return http.HandlerFunc(fn)
+}
+
+func (v *Valve) ShutdownHandler(next http.Handler) http.Handler {
+	fn := func(w http.ResponseWriter, r *http.Request) {
+		valv := Context(r.Context())
+		valv.Open()
+		defer valv.Close()
+
+		select {
+		// Shutdown in progress - don't accept new requests
+		case <-valv.Stop():
+			http.Error(w, ErrShuttingdown.Error(), http.StatusServiceUnavailable)
+
+		default:
+			next.ServeHTTP(w, r)
+		}
 	}
 	return http.HandlerFunc(fn)
 }
@@ -86,11 +105,13 @@ func (v *Valve) Stop() <-chan struct{} {
 	return v.stopCh
 }
 
-func (v *Valve) Add(delta int) {
+func (v *Valve) Add(delta int) error {
 	select {
 	case <-v.stopCh:
+		return ErrShuttingdown
 	default:
 		v.wg.Add(delta)
+		return nil
 	}
 }
 
@@ -98,8 +119,8 @@ func (v *Valve) Done() {
 	v.wg.Done()
 }
 
-func (v *Valve) Open() {
-	v.Add(1)
+func (v *Valve) Open() error {
+	return v.Add(1)
 }
 
 func (v *Valve) Close() {
