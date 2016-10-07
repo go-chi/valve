@@ -57,12 +57,13 @@ func (v *Valve) Handler(next http.Handler) http.Handler {
 
 func (v *Valve) ShutdownHandler(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
-		Context(r.Context()).Open()
-		defer Context(r.Context()).Close()
+		valv := Context(r.Context())
+		valv.Open()
+		defer valv.Close()
 
 		select {
 		// Shutdown in progress - don't accept new requests
-		case <-Context(r.Context()).Stop():
+		case <-valv.Stop():
 			http.Error(w, ErrShuttingdown.Error(), http.StatusServiceUnavailable)
 
 		default:
