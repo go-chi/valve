@@ -46,6 +46,10 @@ func New() *Valve {
 	}
 }
 
+func (v *Valve) ContextLever() context.Context {
+	return context.WithValue(context.Background(), ValveCtxKey, Lever(v))
+}
+
 func (v *Valve) Handler(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), ValveCtxKey, Lever(v))
@@ -62,8 +66,8 @@ func (v *Valve) ShutdownHandler(next http.Handler) http.Handler {
 		defer valv.Close()
 
 		select {
-		// Shutdown in progress - don't accept new requests
 		case <-valv.Stop():
+			// Shutdown in progress - don't accept new requests
 			http.Error(w, ErrShuttingdown.Error(), http.StatusServiceUnavailable)
 
 		default:
