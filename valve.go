@@ -27,6 +27,8 @@ func (k *contextKey) String() string {
 type Valve struct {
 	stopCh chan struct{}
 	wg     sync.WaitGroup
+
+	mu sync.Mutex
 }
 
 type Lever interface {
@@ -56,6 +58,9 @@ func (v *Valve) Handler(next http.Handler) http.Handler {
 // give a grace period of `timeout` duration. If `timeout` is 0 then it will
 // wait indefinitely until all valves are closed.
 func (v *Valve) Shutdown(timeout time.Duration) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
 	close(v.stopCh)
 
 	if timeout == 0 {
