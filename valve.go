@@ -139,12 +139,12 @@ func (v *Valve) Close() {
 // wouldnt be necessary, but it is handy otherwise.
 func (v *Valve) ShutdownHandler(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
-		valv := Lever(r.Context())
-		valv.Open()
-		defer valv.Close()
+		lever := Lever(r.Context())
+		lever.Open()
+		defer lever.Close()
 
 		select {
-		case <-valv.Stop():
+		case <-lever.Stop():
 			// Shutdown in progress - don't accept new requests
 			http.Error(w, ErrShuttingdown.Error(), http.StatusServiceUnavailable)
 
