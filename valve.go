@@ -2,13 +2,15 @@ package valve
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"sync"
+	"time"
 )
 
 var (
 	ValveCtxKey = &contextKey{"ValveContext"}
+	ErrTimedout = errors.New("valve: shutdown timed out")
 )
 
 // contextKey is a value for use with context.WithValue. It's used as
@@ -50,12 +52,28 @@ func (v *Valve) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(fn)
 }
 
-// TODO: accept max time argument..
-func (v *Valve) Shutdown() error {
-	fmt.Println("shutdown now.") // TODO: remove comment..
-	// maybe take other logger?
+// Shutdown will signal to the context to stop all processing, and will
+// give a grace period of `timeout` duration. If `timeout` is 0 then it will
+// wait indefinitely until all valves are closed.
+func (v *Valve) Shutdown(timeout time.Duration) error {
 	close(v.stopCh)
-	v.wg.Wait() // TODO: timeout after max time
+
+	if timeout == 0 {
+		v.wg.Wait()
+	} else {
+		tc := make(chan struct{})
+		go func() {
+			defer close(tc)
+			v.wg.Wait()
+		}()
+		select {
+		case <-tc:
+			return nil
+		case <-time.After(timeout):
+			return ErrTimedout
+		}
+	}
+
 	return nil
 }
 

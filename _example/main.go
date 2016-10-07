@@ -44,10 +44,8 @@ func main() {
 			// We want this handler to complete successfully during a shutdown signal,
 			// so consider the work here as some background routine to fetch a long running
 			// search query to find as many results as possible, but, instead we cut it short
-			// and respond with what we have so far. How a shutdown is handled it entirely
-			// up to the developer, but the signal will hit.
-			//
-			// depends on what can be preempetted, and what cannot.
+			// and respond with what we have so far. How a shutdown is handled is entirely
+			// up to the developer, as some code blocks are preemptable, and others are not.
 			time.Sleep(5 * time.Second)
 		}
 
@@ -101,11 +99,14 @@ func main() {
 	srv := &graceful.Server{
 		Timeout: 20 * time.Second,
 		Server:  &http.Server{Addr: ":3333", Handler: r},
-		BeforeShutdown: func() bool {
-			fmt.Println("shutting down..")
-			valv.Shutdown()
-			return true
-		},
+	}
+	srv.BeforeShutdown = func() bool {
+		fmt.Println("shutting down..")
+		err := valv.Shutdown(srv.Timeout)
+		if err != nil {
+			fmt.Println("Shutdown error -", err)
+		}
+		return true
 	}
 	srv.ListenAndServe()
 }
