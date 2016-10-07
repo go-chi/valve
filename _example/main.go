@@ -6,23 +6,53 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/goware/valve"
 	"github.com/pressly/chi"
 	"github.com/pressly/chi/middleware"
+	"github.com/pressly/valve"
 	"github.com/tylerb/graceful"
 )
 
 func main() {
 
+	// Our graceful valve shut-off package to manage code preemption and
+	// shutdown signaling.
 	valv := valve.New()
+	baseCtx := valv.Context()
 
-	//-------
+	// Example of a long running background worker thing..
+	go func(ctx context.Context) {
+		for {
+			<-time.After(1 * time.Second)
 
+			func() {
+				valve.Lever(ctx).Open()
+				defer valve.Lever(ctx).Close()
+
+				// actual code doing stuff..
+				fmt.Println("tick..")
+				time.Sleep(2 * time.Second)
+				// end-logic
+
+				// signal control..
+				select {
+				case <-valve.Lever(ctx).Stop():
+					fmt.Println("valve is closed")
+					return
+
+				case <-ctx.Done():
+					fmt.Println("context is cancelled, go home.")
+					return
+				default:
+				}
+			}()
+
+		}
+	}(baseCtx)
+
+	// HTTP service running in this program as well. The valve context is set
+	// as a base context on the server listener at the point where we instantiate
+	// the server - look lower.
 	r := chi.NewRouter()
-
-	r.Use(valv.Handler) // TODO: we can remove this with the base context stuff..
-	// something like..chi.WithBaseContext(http.Handler, context.Context) http.handler
-
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 
@@ -32,11 +62,11 @@ func main() {
 
 	r.Get("/slow", func(w http.ResponseWriter, r *http.Request) {
 
-		valve.Context(r.Context()).Open()
-		defer valve.Context(r.Context()).Close()
+		valve.Lever(r.Context()).Open()
+		defer valve.Lever(r.Context()).Close()
 
 		select {
-		case <-valve.Context(r.Context()).Stop():
+		case <-valve.Lever(r.Context()).Stop():
 			fmt.Println("valve is closed. finish up..")
 
 		case <-time.After(5 * time.Second):
@@ -52,39 +82,6 @@ func main() {
 		w.Write([]byte(fmt.Sprintf("all done.\n")))
 	})
 
-	// Example of a long running background worker thing..
-	ctx := context.WithValue(context.Background(), valve.ValveCtxKey, valve.Lever(valv))
-	go func(ctx context.Context) {
-		for {
-			<-time.After(1 * time.Second)
-
-			func() {
-				valve.Context(ctx).Open()
-				defer valve.Context(ctx).Close()
-
-				// actual code doing stuff..
-				fmt.Println("tick..")
-				time.Sleep(2 * time.Second)
-				// end-logic
-
-				// signal control..
-				select {
-				case <-valve.Context(ctx).Stop():
-					fmt.Println("valve is closed")
-					return
-
-				case <-ctx.Done():
-					fmt.Println("context is cancelled, go home.")
-					return
-				default:
-				}
-			}()
-
-		}
-	}(ctx)
-
-	// -------
-
 	// c := make(chan os.Signal, 1)
 	// signal.Notify(c, os.Interrupt)
 	// go func() {
@@ -94,11 +91,11 @@ func main() {
 	// 		os.Exit(1)
 	// 	}
 	// }()
-	// http.ListenAndServe(":3333", r)
+	// http.ListenAndServe(":3333", chi.ServerBaseContext(r, baseCtx))
 
 	srv := &graceful.Server{
 		Timeout: 20 * time.Second,
-		Server:  &http.Server{Addr: ":3333", Handler: r},
+		Server:  &http.Server{Addr: ":3333", Handler: chi.ServerBaseContext(r, baseCtx)},
 	}
 	srv.BeforeShutdown = func() bool {
 		fmt.Println("shutting down..")
@@ -106,6 +103,7 @@ func main() {
 		if err != nil {
 			fmt.Println("Shutdown error -", err)
 		}
+
 		// the app code has stopped here now, and so this would be a good place
 		// to close up any db and other service connections, etc.
 		return true
