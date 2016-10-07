@@ -106,6 +106,8 @@ func main() {
 		if err != nil {
 			fmt.Println("Shutdown error -", err)
 		}
+		// the app code has stopped here now, and so this would be a good place
+		// to close up any db and other service connections, etc.
 		return true
 	}
 	srv.ListenAndServe()
