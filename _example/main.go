@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/pressly/chi"
-	"github.com/pressly/chi/middleware"
-	"github.com/pressly/valve"
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/valve"
 	"github.com/tylerb/graceful"
 )
 
