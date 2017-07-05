@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	ValveCtxKey     = &contextKey{"ValveContext"}
+	ValveCtxKey     = &contextKey{"Valve"}
 	ErrTimedout     = errors.New("valve: shutdown timed out")
 	ErrShuttingdown = errors.New("valve: shutdown in progress")
 	ErrOff          = errors.New("valve: valve already shutdown")
